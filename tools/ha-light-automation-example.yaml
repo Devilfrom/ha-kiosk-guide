@@ -104,3 +104,19 @@ automation:
     actions:
       - action: rest_command.kiosk_screen_on
     mode: single
+
+  - alias: "壁挂平板 - 工作日白天每5分钟确保熄屏（被唤醒也5分钟内关）"
+    # Fully 的 sleepSchedule 是单次边界触发（08:00 睡、18:00 醒），窗口内若被
+    # REST / 点屏 / 通知唤醒，不会自动再睡。这条每 5 分钟兜底发一次 screenOff，
+    # 保证工作日 8-18 内屏幕最多亮 5 分钟就被关掉。screenOff 幂等，已关时无害。
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+    conditions:
+      - condition: time
+        after: "08:00:00"
+        before: "18:00:00"
+        weekday: [mon, tue, wed, thu, fri]
+    actions:
+      - action: rest_command.kiosk_screen_off
+    mode: single
