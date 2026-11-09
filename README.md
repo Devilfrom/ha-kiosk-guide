@@ -30,13 +30,14 @@
 - [01 目标与整体结构](docs/01-overview.md)
 - [02 WebView 升级：修复 HA 显示错乱](docs/02-webview-upgrade.md)
 - [03 性能调优：从 78% CPU 到 20%](docs/03-performance.md)
-- [04 时钟屏保与省电](docs/04-screensaver-power.md)
+- [04 时钟屏保、夜间休眠与省电](docs/04-screensaver-power.md)
 - [05 已知限制与回滚](docs/05-limits-and-rollback.md)
 - `assets/clock.html` — 自建黑底中文时钟屏保页
 - `assets/clock-forest.html` — 背景图版时钟屏保页（背景图需自备，见 [04](docs/04-screensaver-power.md)）
 - `assets/offline.html` — 断网提示页，目标地址由配置传入（见 [配置清单](tools/prefs-template.md)）
 - `tools/perf_sample.py` — 通过 adb 采样 CPU 与掉帧
-- `tools/prefs-template.md` — 脱敏的配置清单
+- `tools/prefs-template.md` — 脱敏的配置清单（含夜间休眠 JSON 格式）
+- `tools/ha-light-automation-example.yaml` — 光感联动屏幕的 HA 自动化脱敏示例
 
 ## 实测效果
 

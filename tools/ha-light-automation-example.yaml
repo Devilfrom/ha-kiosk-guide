@@ -1,0 +1,69 @@
+# 光感联动 Kiosk 平板屏幕 —— 脱敏示例（Home Assistant 2024.10+ 语法）
+#
+# 用途：夜间开灯时提前点亮壁挂平板，关灯一段时间后提前关屏。
+# 设计原则：**保留设备自己的定时休眠/唤醒作为兜底**，HA 只在 23:30–07:00 窗口内补刀。
+# 白天不要发 screenOff，否则会和「30 秒进时钟屏保」抢逻辑。
+#
+# 前置条件
+#   1. 平板设置：远程管理 = 开；远程管理密码 = 强密码；来自本地网络的远程管理 = 开
+#      （REST 默认端口 2323，命令 screenOff / screenOn）
+#   2. 替换下面三个占位符；不要把填好的文件提交到公开仓库
+#   3. REST 是 HTTP 明文，密码会经过局域网：只在可信内网使用，
+#      最好在路由器上限制只有 HA 主机能访问平板的 2323 端口
+#   4. `<ILLUMINANCE_SENSOR>` 需要一个以 lx 为单位的数值型光照度实体；
+#      本项目实测环境里有 3 个（人体传感器自带光照度）
+#
+# 实机验证结论：
+#   screenOff -> 200 {"status":"OK"} + 屏幕 OFF
+#   screenOn  -> 200 {"status":"OK"} + 屏幕 ON
+#   即使平板已由定时休眠关屏，REST screenOn 也能把它点亮
+#
+# 已知限制：深夜设备进入深度 Doze 后 WiFi 可能省电，外部 REST 请求可能延迟或失败；
+#           07:00 的定时唤醒走 AlarmManager，最可靠。最后一条自动化是保险补刀。
+
+rest_command:
+  kiosk_screen_on:
+    url: "http://<TABLET_IP>:2323/?cmd=screenOn&password=<REMOTE_ADMIN_PASSWORD>&type=json"
+    method: GET
+    timeout: 10
+  kiosk_screen_off:
+    url: "http://<TABLET_IP>:2323/?cmd=screenOff&password=<REMOTE_ADMIN_PASSWORD>&type=json"
+    method: GET
+    timeout: 10
+
+automation:
+  - alias: "壁挂平板 - 夜间开灯提前唤醒"
+    triggers:
+      - trigger: numeric_state
+        entity_id: "<ILLUMINANCE_SENSOR>"
+        above: 30
+        for: "00:00:30"
+    conditions:
+      - condition: time
+        after: "23:30:00"
+        before: "07:00:00"
+    actions:
+      - action: rest_command.kiosk_screen_on
+    mode: single
+
+  - alias: "壁挂平板 - 夜间关灯延时关屏"
+    triggers:
+      - trigger: numeric_state
+        entity_id: "<ILLUMINANCE_SENSOR>"
+        below: 5
+        for: "00:10:00"
+    conditions:
+      - condition: time
+        after: "23:30:00"
+        before: "07:00:00"
+    actions:
+      - action: rest_command.kiosk_screen_off
+    mode: single
+
+  - alias: "壁挂平板 - 早晨唤醒后补一次点亮"
+    triggers:
+      - trigger: time
+        at: "07:00:30"
+    actions:
+      - action: rest_command.kiosk_screen_on
+    mode: single

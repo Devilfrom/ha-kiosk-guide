@@ -50,10 +50,53 @@ MSYS_NO_PATHCONV=1 adb shell "am start -n de.ozerov.fully/.FullyActivity"
 | `skipReloadIfStartUrlShowing` | `true` | 已在首页时跳过无谓重载 |
 | `stopScreensaverOnMotion` | `true` | 触摸唤醒 |
 | `keepScreenOn` | `true` | 保持屏幕常亮 |
+| `sleepSchedule` | JSON 字符串 | 定时休眠/唤醒，见下 |
 
 完整的脱敏清单见 [`tools/prefs-template.md`](../tools/prefs-template.md)。
 
-## 四个真实的坑
+## 夜间定时休眠（23:30–07:00）
+
+`sleepSchedule` 是一个 **JSON 字符串**（不是布尔开关，也不是两个时间字段），格式为数组，可配多组：
+
+```json
+[{"sleepTime":"23:30","wakeupTime":"07:00","dayOfWeek":8}]
+```
+
+- 键名是 **`wakeupTime`（小写 u）**。部分官方文档 / 集成示例写作 `wakeUpTime`，写错会解析成空值、闹钟不排程。
+- `dayOfWeek` 是数字：`0` 禁用、`1`–`7` 为周日到周六、`8` = **每天**、`9` 周一至周五、`10` 周末。
+- **跨午夜无需特殊写法**：应用分别计算 sleep 与 wakeup 两个 `setAlarmClock`，`23:30` 落在当天、`07:00` 自动落在次日。
+- 休眠关屏需要**设备管理员权限**已激活，否则到点不会关屏。
+- 写入方式同其它配置：`force-stop` → 写 shared_prefs → 启动应用；**必须重启应用才会重排闹钟**。
+
+验证：
+
+```bash
+adb shell "dumpsys alarm | grep -E 'triggerTime=.*(23:30|07:00)'"   # 两个闹钟，日期应为当天 / 次日
+adb logcat -d | grep -E 'Alarm sleep set|Alarm wakeup set'
+adb shell "dumpsys power | grep -iE 'mWakefulness=|Display Power'"   # 休眠时应为 Asleep / OFF
+```
+
+实机用短时间窗（临时把 `sleepTime` / `wakeupTime` 改成当前时间后 2 / 4 分钟）验证过：到点自动关屏、到点自动亮屏、Fully 仍在前台、屏保与亮度闭环不受影响，之后改回正式时段。
+
+## 光感联动（可选）
+
+**能实现，但 Kiosk 应用本身不读系统光感器。** 反编译确认它只注册加速度计与指南针（`TYPE_ACCELEROMETER` / `TYPE_MAGNETIC_FIELD`），设置里的「黑暗时关闭屏幕」(`screenOffInDarkness`) 实际由 `LumaMotionDetection` 计算**前置摄像头帧亮度**，需要常开 `motionDetection`，且没有「变亮自动亮屏」的反向逻辑；老平板上不划算。
+
+可行路径是 **HA 光照度实体 + REST 命令**：
+
+| 环节 | 实测结果 |
+| --- | --- |
+| 数据源 | HA 里现成 3 个 lx 光照度实体（人体传感器自带） |
+| 控制通道 | `remoteAdmin` + 强密码，端口 `2323` |
+| `?cmd=screenOff` | `200 {"status":"OK"}`，屏幕 OFF |
+| `?cmd=screenOn` | `200 {"status":"OK"}`，屏幕 ON |
+| 定时休眠期间 `screenOn` | 也能提前点亮 |
+
+完整脱敏示例见 [`tools/ha-light-automation-example.yaml`](../tools/ha-light-automation-example.yaml)：保留定时休眠作兜底，HA 只在 23:30–07:00 做「开灯提前唤醒 / 关灯延时关屏」，并在 07:00:30 补一次点亮。本次验证是**临时开启、测完立即关闭**远程管理，设备上 `remoteAdmin=false`、密码为空。
+
+> 安全：REST 是 HTTP 明文，密码经过局域网；只在可信内网使用并设强密码，建议路由器限制仅 HA 主机可访问该端口。深夜深度 Doze 下 WiFi 省电可能让外部请求延迟，07:00 的 AlarmManager 唤醒仍是最可靠的一环。
+
+## 六个真实的坑
 
 ### 坑 1：屏保永远不触发，亮度也不变
 
@@ -132,6 +175,16 @@ MSYS_NO_PATHCONV=1 adb shell "sleep 38; settings get system screen_brightness"  
 实机闭环：先 `settings put system screen_brightness 167` → 轻触 → 静置 38 秒读到 60
 → 触摸唤醒读回 167。唤醒后的 HA 首页与初始首页几乎逐字节一致（无重载白屏）。
 
+### 坑 5：夜间休眠后触摸点不亮
+
+「屏保」和「定时休眠」是两回事：屏保只是覆盖一层时钟 Fragment，屏幕仍在亮，触摸即可唤醒；定时休眠走设备管理员 `lockNow()`，屏幕真正关掉，**休眠期间 `input tap` 不会点亮**。实机验证：休眠中 `input tap 500 400` 后仍是 `Asleep / OFF`，按一次电源键才回到 `Awake / ON`；到 07:00 的定时闹钟或 REST `screenOn` 也能点亮。
+
+若希望夜里随时触摸看时间，别用休眠，改用「黑屏屏保」方案：`timeToScreensaverV2` 保持不变、`screensaverWallpaperURL` 设为 `fully://color#000000`、`screensaverBrightness` 设为 `0`。屏幕技术上仍亮着，触摸即唤醒，代价是仍有一点背光功耗。
+
+### 坑 6：以为「黑暗时关屏」用的是光线传感器
+
+设备确实有 `android.sensor.light`，但应用没有注册 `TYPE_LIGHT`。`darknessLevel` 在设置界面挂在 `motionDetection` 之下，黑暗判定来自摄像头预览帧的平均亮度，广播 `darkness_detected` 后关屏。开启它意味着前置摄像头常驻 5 fps 分析，且关屏后没有与之配对的「变亮自动亮屏」广播 —— 单向关屏，只能靠电源键、定时闹钟或 REST 恢复。想按环境光自动控制，走上一节的 HA + REST 方案。
+
 ## 回归验证
 
 ```bash
@@ -144,4 +197,5 @@ adb shell screencap -p /sdcard/Download/saver.png            # 应为时钟屏�
 adb shell input tap 1000 700
 adb shell "sleep 6; settings get system screen_brightness"   # 期望 167
 adb shell dumpsys activity activities | grep mResumedActivity # 应仍在 Kiosk 应用
+adb shell "dumpsys alarm | grep -E 'triggerTime=.*(23:30|07:00)'"  # 夜间休眠已排程（当天 / 次日）
 ```
