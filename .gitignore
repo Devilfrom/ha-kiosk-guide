@@ -1,0 +1,27 @@
+# Never commit third-party binaries or reverse-engineered content
+*.apk
+*.apks
+*.xapk
+*.jar
+*.keystore
+*.jks
+decompiled/
+build/
+dist/
+
+# Never commit device dumps, credentials or screenshots
+*_prefs*.xml
+_prefs*.xml
+*.png
+*.jpg
+*.jpeg
+*.log
+*.db
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+__pycache__/
+*.pyc
