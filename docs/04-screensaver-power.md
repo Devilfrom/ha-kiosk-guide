@@ -81,6 +81,8 @@ adb shell am force-stop de.ozerov.fully
 adb shell am start -n de.ozerov.fully/.FullyActivity
 ```
 
+**根治**：把 Kiosk 应用的设置项「屏幕亮度」（`screenBrightness`）设为 `167`，留空才是跟随系统默认。应用启动时会把这个值写回系统设置，所以无论上次停在什么亮度，基准都会被拉回 167。实测 `100 →(启动) 167 →(屏保) 60 →(唤醒) 167`，屏保亮度不受影响。配置模板见 [`tools/prefs-template.md`](../tools/prefs-template.md)。
+
 ### 坑 3：每次点亮唤醒都重新「进入网站」
 
 现象：进屏保后再唤醒，HA 会重走一遍加载流程（闪「加载中…」、重新拉前端资源），慢且费电，

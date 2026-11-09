@@ -38,6 +38,27 @@
 | `stopScreensaverOnMotion` | `true` | 触摸唤醒 |
 | `keepScreenOn` | `true` | |
 
+## 无人值守稳定性（壁挂长期运行）
+
+| 设置项 | 值 | 备注 |
+| --- | --- | --- |
+| `restartOnCrash` | `true` | 应用崩溃后自动重启 |
+| `restartAfterUpdate` | `true` | 应用 / WebView 更新后自动重启 |
+| `runInForeground` | `true` | 前台服务，降低被系统回收的概率，被结束后拉起 |
+| `reloadPageFailure` | `30` | 页面加载失败 30 秒后自动重载 `startURL`；`0` = 禁用 |
+| `errorURL` | `file:///sdcard/Download/offline.html?target=<URL 编码后的 HA 地址>` | 连接错误时显示本地提示页，见下 |
+| `screenBrightness` | `167` | 固定亮度基准，**根治坑 2**；留空则跟随系统 |
+| `enableZoom` | `false` | 防止误触双指缩放把 HA 放大 |
+| `jsAlerts` | `false` | 防止 JS 警告框卡住壁挂操作 |
+
+`assets/offline.html` 是纯静态断网提示页，页面本身不含任何内网地址：目标地址由 `errorURL`
+的查询参数 `?target=`（URL 编码）传入，页面每 20 秒尝试跳回一次。配合
+`reloadPageFailure` 形成双保险——HA 重启、路由器抽风时平板显示中文提示并自动重连，
+而不是浏览器错误页或白屏。实机验证方法：临时把 `startURL` 改成 `http://127.0.0.1:9`，
+重启应用应出现「服务暂不可用」倒计时页，改回 `startURL` 后自动恢复。
+
+> `errorURL` 在部分版本标记为 PLUS 功能，是否可用请以实机为准（本项目的修改版实测可用）。
+
 ## 不要出现的旧键
 
 旧版本残留的 `timeToScreensaver`、`screensaverURL` 会触发启动时的配置迁移，把 `timeToScreensaverV2` 重置为 `0`，导致屏保永不触发。核对时若发现这两个键，删掉，**只保留新键**。
