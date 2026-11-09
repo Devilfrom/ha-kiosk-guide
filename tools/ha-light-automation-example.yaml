@@ -1,8 +1,10 @@
 # 光感 / 开门 联动 Kiosk 平板屏幕 —— 脱敏示例（Home Assistant 2024.10+ 语法）
 #
-# 用途：夜间开灯时提前点亮壁挂平板，关灯一段时间后提前关屏；开门时也点亮。
+# 用途：开灯时提前点亮壁挂平板，关灯一段时间后提前关屏；开门时也点亮。
 # 设计原则：**设备自己的定时休眠/唤醒作为兜底（最可靠）**，HA 只在必要时补刀。
-# 白天不要发 screenOff，否则会和「30 秒进时钟屏保」抢逻辑。
+# 光感（开灯点亮 / 关灯息屏）覆盖「除工作日 08:00–18:00 外的所有在家时段」
+#   —— 傍晚 18:00–23:30、周末白天、夜间 23:30–07:00 都按光照控制；
+#      仅上班时段（平板本就强制熄屏）不触发，避免和作息冲突、也不和 30 秒时钟屏保抢逻辑。
 #
 # 前置条件
 #   1. 平板设置：远程管理 = 开；远程管理密码 = 强密码；来自本地网络的远程管理 = 开
@@ -50,30 +52,36 @@ automation:
       - action: rest_command.kiosk_screen_on
     mode: single
 
-  - alias: "壁挂平板 - 夜间开灯提前唤醒"
+  - alias: "壁挂平板 - 开灯提前点亮（在家时段，排除工作日白天）"
     triggers:
       - trigger: numeric_state
         entity_id: "<ILLUMINANCE_SENSOR>"
         above: 30
         for: "00:00:30"
     conditions:
-      - condition: time
-        after: "23:30:00"
-        before: "07:00:00"
+      - condition: not
+        conditions:
+          - condition: time
+            after: "08:00:00"
+            before: "18:00:00"
+            weekday: [mon, tue, wed, thu, fri]
     actions:
       - action: rest_command.kiosk_screen_on
     mode: single
 
-  - alias: "壁挂平板 - 夜间关灯延时关屏（重新进入夜间休眠）"
+  - alias: "壁挂平板 - 关灯延时关屏（在家时段，排除工作日白天）"
     triggers:
       - trigger: numeric_state
         entity_id: "<ILLUMINANCE_SENSOR>"
         below: 5
         for: "00:10:00"
     conditions:
-      - condition: time
-        after: "23:30:00"
-        before: "07:00:00"
+      - condition: not
+        conditions:
+          - condition: time
+            after: "08:00:00"
+            before: "18:00:00"
+            weekday: [mon, tue, wed, thu, fri]
     actions:
       - action: rest_command.kiosk_screen_off
     mode: single
