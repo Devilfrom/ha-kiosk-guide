@@ -1,7 +1,7 @@
-# 光感联动 Kiosk 平板屏幕 —— 脱敏示例（Home Assistant 2024.10+ 语法）
+# 光感 / 开门 联动 Kiosk 平板屏幕 —— 脱敏示例（Home Assistant 2024.10+ 语法）
 #
-# 用途：夜间开灯时提前点亮壁挂平板，关灯一段时间后提前关屏。
-# 设计原则：**保留设备自己的定时休眠/唤醒作为兜底**，HA 只在 23:30–07:00 窗口内补刀。
+# 用途：夜间开灯时提前点亮壁挂平板，关灯一段时间后提前关屏；开门时也点亮。
+# 设计原则：**设备自己的定时休眠/唤醒作为兜底（最可靠）**，HA 只在必要时补刀。
 # 白天不要发 screenOff，否则会和「30 秒进时钟屏保」抢逻辑。
 #
 # 前置条件
@@ -10,8 +10,10 @@
 #   2. 替换下面三个占位符；不要把填好的文件提交到公开仓库
 #   3. REST 是 HTTP 明文，密码会经过局域网：只在可信内网使用，
 #      最好在路由器上限制只有 HA 主机能访问平板的 2323 端口
-#   4. `<ILLUMINANCE_SENSOR>` 需要一个以 lx 为单位的数值型光照度实体；
-#      本项目实测环境里有 3 个（人体传感器自带光照度）
+#   4. <ILLUMINANCE_SENSOR> 需要一个以 lx 为单位的数值型光照度实体；
+#      <DOOR_SENSOR> 需要一个 device_class=door 的二值实体（on=开门）
+#   5. 定时作息本身在平板上用 Fully 的 sleepSchedule 配置（见《04 屏保与省电》），
+#      本文件只负责“计划外的唤醒/关屏”。
 #
 # 实机验证结论：
 #   screenOff -> 200 {"status":"OK"} + 屏幕 OFF
@@ -19,7 +21,7 @@
 #   即使平板已由定时休眠关屏，REST screenOn 也能把它点亮
 #
 # 已知限制：深夜设备进入深度 Doze 后 WiFi 可能省电，外部 REST 请求可能延迟或失败；
-#           07:00 的定时唤醒走 AlarmManager，最可靠。最后一条自动化是保险补刀。
+#           07:00 / 18:00 的定时唤醒走 AlarmManager，最可靠。最后两条自动化是保险补刀。
 
 rest_command:
   kiosk_screen_on:
@@ -32,6 +34,22 @@ rest_command:
     timeout: 10
 
 automation:
+  - alias: "壁挂平板 - 开门唤醒（非工作日白天不触发）"
+    triggers:
+      - trigger: state
+        entity_id: "<DOOR_SENSOR>"
+        to: "on"            # 门打开
+    conditions:
+      - condition: not
+        conditions:
+          - condition: time
+            after: "08:00:00"
+            before: "18:00:00"
+            weekday: [mon, tue, wed, thu, fri]
+    actions:
+      - action: rest_command.kiosk_screen_on
+    mode: single
+
   - alias: "壁挂平板 - 夜间开灯提前唤醒"
     triggers:
       - trigger: numeric_state
@@ -46,7 +64,7 @@ automation:
       - action: rest_command.kiosk_screen_on
     mode: single
 
-  - alias: "壁挂平板 - 夜间关灯延时关屏"
+  - alias: "壁挂平板 - 夜间关灯延时关屏（重新进入夜间休眠）"
     triggers:
       - trigger: numeric_state
         entity_id: "<ILLUMINANCE_SENSOR>"
@@ -60,10 +78,21 @@ automation:
       - action: rest_command.kiosk_screen_off
     mode: single
 
-  - alias: "壁挂平板 - 早晨唤醒后补一次点亮"
+  - alias: "壁挂平板 - 早晨 07:00:30 补刀点亮"
     triggers:
       - trigger: time
         at: "07:00:30"
+    actions:
+      - action: rest_command.kiosk_screen_on
+    mode: single
+
+  - alias: "壁挂平板 - 傍晚 18:00:30 工作日补刀点亮"
+    triggers:
+      - trigger: time
+        at: "18:00:30"
+    conditions:
+      - condition: time
+        weekday: [mon, tue, wed, thu, fri]
     actions:
       - action: rest_command.kiosk_screen_on
     mode: single

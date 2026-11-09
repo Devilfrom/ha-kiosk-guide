@@ -54,29 +54,51 @@ MSYS_NO_PATHCONV=1 adb shell "am start -n de.ozerov.fully/.FullyActivity"
 
 完整的脱敏清单见 [`tools/prefs-template.md`](../tools/prefs-template.md)。
 
-## 夜间定时休眠（23:30–07:00）
+## 作息矩阵（工作日 / 周末 / 夜间）
 
-`sleepSchedule` 是一个 **JSON 字符串**（不是布尔开关，也不是两个时间字段），格式为数组，可配多组：
+设备的定时休眠用 Fully 的 `sleepSchedule`（**JSON 字符串**，格式为数组，可配多组）。本项目实际配置：
 
 ```json
-[{"sleepTime":"23:30","wakeupTime":"07:00","dayOfWeek":8}]
+[
+  {"sleepTime":"08:00","wakeupTime":"18:00","dayOfWeek":9},
+  {"sleepTime":"23:30","wakeupTime":"07:00","dayOfWeek":8}
+]
 ```
 
-- 键名是 **`wakeupTime`（小写 u）**。部分官方文档 / 集成示例写作 `wakeUpTime`，写错会解析成空值、闹钟不排程。
-- `dayOfWeek` 是数字：`0` 禁用、`1`–`7` 为周日到周六、`8` = **每天**、`9` 周一至周五、`10` 周末。
-- **跨午夜无需特殊写法**：应用分别计算 sleep 与 wakeup 两个 `setAlarmClock`，`23:30` 落在当天、`07:00` 自动落在次日。
-- 休眠关屏需要**设备管理员权限**已激活，否则到点不会关屏。
-- 写入方式同其它配置：`force-stop` → 写 shared_prefs → 启动应用；**必须重启应用才会重排闹钟**。
+逐条含义：
+
+| 条目 | 时段 | `dayOfWeek` | 作用 |
+| --- | --- | --- | --- |
+| 1 | 周一至周五 08:00–18:00 | `9` 周一至周五 | 上班时段无人值守，深度休眠省电 |
+| 2 | 每天 23:30–07:00 | `8` 每天 | 夜间睡觉，深度休眠 |
+
+合并后的实际作息：
+
+| 时段 | 工作日（周一至周五） | 周末（周六、周日） |
+| --- | --- | --- |
+| 00:00–07:00 | 休眠（条目 2） | 休眠（条目 2） |
+| 07:00–08:00 | 亮屏 | 亮屏 |
+| 08:00–18:00 | **休眠（条目 1）** | 亮屏 |
+| 18:00–23:30 | 亮屏（18:00 自动唤醒） | 亮屏 |
+| 23:30–24:00 | 休眠（条目 2） | 休眠（条目 2） |
+
+> 周末整天只有夜间休眠，白天全亮；工作日白天 8–18 关屏，傍晚 18:00 自动亮回。「开门/开灯点亮」由下一节的 HA 自动化负责，只在计划外补刀。
+
+`dayOfWeek` 取值（来自应用内 `dayofweek_array`，以本版本为准）：`0` 禁用、`1`–`7` 周日到周六、`8` **每天**、`9` 周一至周五、`10` 周末。键名是 **`wakeupTime`（小写 u）**，写成 `wakeUpTime` 会解析失败。
+
+跨午夜无需特殊写法：应用分别计算 sleep 与 wakeup 两个 `setAlarmClock`，`23:30` 落在当天、`07:00` 自动落在次日。休眠关屏需要**设备管理员权限**已激活。
+
+写入方式同其它配置：`force-stop` → 写 shared_prefs → 启动应用；**必须重启应用才会重排闹钟**。应用采用「滚动排程」——通常只提前排好最近的一次事件，到点触发后再排下一个（例如今天能看到 18:00 与 23:30 两个闹钟，明天的 07:00 / 08:00 会在对应事件触发后由应用自动补排），无需手动干预。
 
 验证：
 
 ```bash
-adb shell "dumpsys alarm | grep -E 'triggerTime=.*(23:30|07:00)'"   # 两个闹钟，日期应为当天 / 次日
+adb shell "dumpsys alarm | grep -E 'triggerTime=.*(08:00|18:00|23:30|07:00)'"   # 应能看到当天/次日的相关闹钟
 adb logcat -d | grep -E 'Alarm sleep set|Alarm wakeup set'
 adb shell "dumpsys power | grep -iE 'mWakefulness=|Display Power'"   # 休眠时应为 Asleep / OFF
 ```
 
-实机用短时间窗（临时把 `sleepTime` / `wakeupTime` 改成当前时间后 2 / 4 分钟）验证过：到点自动关屏、到点自动亮屏、Fully 仍在前台、屏保与亮度闭环不受影响，之后改回正式时段。
+> 工作日规则已实机验证：在某周一用短窗口（16:15–16:17）临时替换条目 1，屏幕到点真的 OFF、到点真的 ON，`dayOfWeek=9` 与多条目数组均生效。
 
 ## 光感联动（可选）
 
@@ -92,9 +114,9 @@ adb shell "dumpsys power | grep -iE 'mWakefulness=|Display Power'"   # 休眠时
 | `?cmd=screenOn` | `200 {"status":"OK"}`，屏幕 ON |
 | 定时休眠期间 `screenOn` | 也能提前点亮 |
 
-完整脱敏示例见 [`tools/ha-light-automation-example.yaml`](../tools/ha-light-automation-example.yaml)：保留定时休眠作兜底，HA 只在 23:30–07:00 做「开灯提前唤醒 / 关灯延时关屏」，并在 07:00:30 补一次点亮。本次验证是**临时开启、测完立即关闭**远程管理，设备上 `remoteAdmin=false`、密码为空。
+完整脱敏示例见 [`tools/ha-light-automation-example.yaml`](../tools/ha-light-automation-example.yaml)：保留定时休眠作兜底，HA 在 23:30–07:00 做「开灯提前唤醒 / 关灯延时关屏」，在 18:00:30（工作日）与 07:00:30 各补一次点亮，并用门磁在「非工作日白天」以外的时间开门即点亮。**本项目已在平板上常开远程管理**（`remoteAdmin=true`、`remoteAdminLan=true`、密码为强随机串），所以示例里的 REST 命令可直接生效。
 
-> 安全：REST 是 HTTP 明文，密码经过局域网；只在可信内网使用并设强密码，建议路由器限制仅 HA 主机可访问该端口。深夜深度 Doze 下 WiFi 省电可能让外部请求延迟，07:00 的 AlarmManager 唤醒仍是最可靠的一环。
+> 安全：REST 是 HTTP 明文，密码经过局域网；只在可信内网使用。本项目已把 `cloudService`（公网远程）保持关闭，仅 `remoteAdminLan`（本地网络）开启，端口 `2323` 不会暴露到公网；建议进一步在路由器上限制仅 HA 主机可访问该端口。深夜深度 Doze 下 WiFi 省电可能让外部请求延迟，07:00 / 18:00 的 AlarmManager 唤醒仍是最可靠的一环。
 
 ## 六个真实的坑
 
@@ -197,5 +219,5 @@ adb shell screencap -p /sdcard/Download/saver.png            # 应为时钟屏�
 adb shell input tap 1000 700
 adb shell "sleep 6; settings get system screen_brightness"   # 期望 167
 adb shell dumpsys activity activities | grep mResumedActivity # 应仍在 Kiosk 应用
-adb shell "dumpsys alarm | grep -E 'triggerTime=.*(23:30|07:00)'"  # 夜间休眠已排程（当天 / 次日）
+adb shell "dumpsys alarm | grep -E 'triggerTime=.*(08:00|18:00|23:30|07:00)'"  # 作息矩阵已排程（当天 / 次日）
 ```

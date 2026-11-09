@@ -37,7 +37,7 @@
 - `assets/offline.html` — 断网提示页，目标地址由配置传入（见 [配置清单](tools/prefs-template.md)）
 - `tools/perf_sample.py` — 通过 adb 采样 CPU 与掉帧
 - `tools/prefs-template.md` — 脱敏的配置清单（含夜间休眠 JSON 格式）
-- `tools/ha-light-automation-example.yaml` — 光感联动屏幕的 HA 自动化脱敏示例
+- `tools/ha-light-automation-example.yaml` — 作息联动（开门 / 光感 / 早晚补刀）屏幕的 HA 自动化脱敏示例
 
 ## 实测效果
 

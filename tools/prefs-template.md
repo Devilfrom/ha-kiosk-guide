@@ -37,14 +37,17 @@
 | `skipReloadIfStartUrlShowing` | `true` | 已在首页时跳过无谓重载 |
 | `stopScreensaverOnMotion` | `true` | 触摸唤醒 |
 | `keepScreenOn` | `true` | |
-| `sleepSchedule` | `[{"sleepTime":"23:30","wakeupTime":"07:00","dayOfWeek":8}]` | 夜间定时休眠，见下 |
+| `sleepSchedule` | `[{"sleepTime":"08:00","wakeupTime":"18:00","dayOfWeek":9},{"sleepTime":"23:30","wakeupTime":"07:00","dayOfWeek":8}]` | 作息矩阵，见下 |
 
 ## 夜间定时休眠
 
-`sleepSchedule` 是**一个 JSON 字符串**，不是布尔开关。格式与取值（来自应用内 `dayofweek_array`，以本版本为准）：
+`sleepSchedule` 是**一个 JSON 字符串**，不是布尔开关。本项目实际是两个条目的数组（格式与取值来自应用内 `dayofweek_array`，以本版本为准）：
 
 ```json
-[{"sleepTime":"23:30","wakeupTime":"07:00","dayOfWeek":8}]
+[
+  {"sleepTime":"08:00","wakeupTime":"18:00","dayOfWeek":9},
+  {"sleepTime":"23:30","wakeupTime":"07:00","dayOfWeek":8}
+]
 ```
 
 | 字段 | 说明 |
@@ -53,16 +56,26 @@
 | `wakeupTime` | 唤醒时间 `HH:mm`，**小写 u**；写成 `wakeUpTime` 会解析失败 |
 | `dayOfWeek` | `0` 禁用、`1`–`7` 周日到周六、`8` **每天**、`9` 周一至周五、`10` 周末 |
 
-- 数组可写多组规则；跨午夜不需要特殊处理，sleep 与 wakeup 会各自算出下一次闹钟。
+- 数组可写多组规则；跨午夜不需要特殊处理，sleep 与 wakeup 会各自算出下一次闹钟。应用采用滚动排程，通常只提前排最近一次事件，到点后再排下一个。
 - 需要设备管理员权限才能关屏；写完配置**必须重启应用**才会重排闹钟。
-- 校验：`adb shell "dumpsys alarm | grep -E 'triggerTime=.*(23:30|07:00)'"`，日志里应有 `Alarm sleep set` / `Alarm wakeup set`。
-- **休眠 ≠ 屏保**：休眠是真关屏，触摸点不亮，只能按电源键、等到 07:00 或用 REST `screenOn`。详见 [04 坑 5](../docs/04-screensaver-power.md)。
+- 校验：`adb shell "dumpsys alarm | grep -E 'triggerTime=.*(08:00|18:00|23:30|07:00)'"`，日志里应有 `Alarm sleep set` / `Alarm wakeup set`。
+- **休眠 ≠ 屏保**：休眠是真关屏，触摸点不亮，只能按电源键、等到定时闹钟或用 REST `screenOn`。详见 [04 坑 5](../docs/04-screensaver-power.md)。
 
-## 光感联动（可选）
+## 远程管理与光感联动
 
 应用自身不读系统光线传感器（`screenOffInDarkness` 走摄像头帧亮度，不推荐）。可行方案是 HA 光照度实体 + 远程管理 REST 的 `screenOff` / `screenOn`，实测两条命令均返回 `200 OK` 且屏幕状态随之变化，定时休眠期间也能提前点亮。脱敏示例见 [`tools/ha-light-automation-example.yaml`](ha-light-automation-example.yaml)。
 
-开启远程管理会在局域网暴露 `2323` 端口且密码为 HTTP 明文，请设强密码、限制来源 IP；本项目的验证为临时开启、测完立即关闭。
+本项目已在平板上**常开远程管理**（仅本地网络），相关键：
+
+| 设置项 | 值 | 备注 |
+| --- | --- | --- |
+| `remoteAdmin` | `true` | 启用远程管理与 REST 接口（默认端口 `2323`） |
+| `remoteAdminLan` | `true` | 来自本地网络；配套 `cloudService=false` 不暴露公网 |
+| `remoteAdminPassword` | 强随机串 | **绝不外传**，HA 自动化里用它调 REST |
+| `cloudService` | `false` | 关闭公网远程，避免 2323 出公网 |
+| `remoteAdminScreenshot` / `remoteAdminCamshot` | `true` / `false` | 按需；Camshot 需要开动作检测，本项目关 |
+
+> 安全：REST 是 HTTP 明文，密码经过局域网。已关闭公网通道、仅开本地网络；建议路由器再限制只有 HA 主机可访问 `2323`。深夜深度 Doze 下 WiFi 省电可能让外部请求延迟，07:00 / 18:00 的 AlarmManager 唤醒仍是最可靠的一环。
 
 ## 无人值守稳定性（壁挂长期运行）
 
