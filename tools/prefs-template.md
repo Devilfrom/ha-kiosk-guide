@@ -33,7 +33,8 @@
 | `screensaverWallpaperURL` | `file:///sdcard/Download/clock.html` | 本地静态页 |
 | `screensaverBrightness` | `60` | 0–255 |
 | `screensaverPlaylist` | 单条，`type` 为整数 `0` | 写成字符串会解析失败 |
-| `reloadOnScreensaverStop` | `true` | 唤醒后回到 HA |
+| `reloadOnScreensaverStop` | `false` | 关闭唤醒整页重载，壁挂场景更省电 |
+| `skipReloadIfStartUrlShowing` | `true` | 已在首页时跳过无谓重载 |
 | `stopScreensaverOnMotion` | `true` | 触摸唤醒 |
 | `keepScreenOn` | `true` | |
 

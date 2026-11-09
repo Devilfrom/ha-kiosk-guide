@@ -22,7 +22,8 @@ adb push assets/clock.html /sdcard/Download/clock.html
 | `screensaverWallpaperURL` | `file:///sdcard/Download/clock.html` | 屏保实际加载的地址 |
 | `screensaverBrightness` | `60` | 0–255，写入 `Settings.System.screen_brightness` |
 | `screensaverPlaylist` | 单条、`type` 为**整数** `0` | `type` 写成字符串会解析失败 |
-| `reloadOnScreensaverStop` | `true` | 唤醒后重新加载 HA |
+| `reloadOnScreensaverStop` | `false` | **关闭唤醒整页重载**，见坑 3 |
+| `skipReloadIfStartUrlShowing` | `true` | 已在首页时跳过无谓重载 |
 | `stopScreensaverOnMotion` | `true` | 触摸唤醒 |
 | `keepScreenOn` | `true` | 保持屏幕常亮 |
 
@@ -55,6 +56,37 @@ adb shell settings put system screen_brightness 167
 adb shell am force-stop de.ozerov.fully
 adb shell am start -n de.ozerov.fully/.FullyActivity
 ```
+
+### 坑 3：每次点亮唤醒都重新「进入网站」
+
+现象：进屏保后再唤醒，HA 会重走一遍加载流程（闪「加载中…」、重新拉前端资源），慢且费电，
+壁挂大屏上尤其明显。
+
+原因：`reloadOnScreensaverStop = true` 时，屏保停止会调用一次整页 reload 回到 `startURL`。
+注意**进入屏保并不会重载 HA**——那只是屏保 WebView 加载本地 `clock.html`，
+日志里是 `file://` 地址，很容易被误判成「又进了一次网站」。
+
+处理：把 `reloadOnScreensaverStop` 设为 `false`，并把 `skipReloadIfStartUrlShowing`
+设为 `true`（已经停在首页时，跳过其它路径触发的无谓重载）。屏保期间主 WebView 只是被
+Fragment 覆盖、没有被销毁，HA 前端的 WebSocket 持续连接并自动重连，实体状态照常实时更新，
+不需要靠整页刷新。
+
+验证方法（临时探针，测完**务必清空** `injectJsCode`）：
+
+```js
+console.log('PAGE_BOOT|' + location.href + '|' + Date.now());
+```
+
+写入 `injectJsCode` 后重启应用，清空 logcat，静置触发屏保再唤醒：
+
+```bash
+adb logcat -c
+adb shell "sleep 36"                        # 进屏保：日志只应有 file:///.../clock.html
+adb shell "input tap 1000 700; sleep 6"
+adb logcat -d | grep PAGE_BOOT             # 优化前有 1 条 HA URL，优化后应为 0 条
+```
+
+若确实需要「唤醒即强制刷新」，把 `reloadOnScreensaverStop` 改回 `true` 即可。
 
 ## 回归验证
 
