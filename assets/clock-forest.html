@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>时钟屏保 · 森林车站</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%; overflow:hidden;
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-user-select:none; user-select:none;
+  }
+  #bg {
+    position:fixed; inset:0;
+    background-size:cover; background-position:center center; background-repeat:no-repeat;
+    /* 图片缺失时的暗色兜底，绝不黑屏 */
+    background-image:
+      radial-gradient(circle at 75% 22%, rgba(150,180,255,.20) 0%, rgba(150,180,255,0) 42%),
+      linear-gradient(180deg,#060b1e 0%,#101a38 55%,#1e1434 100%);
+  }
+  #wrap {
+    position:relative; z-index:2; width:100%; height:100%;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#f4f8ff;
+    text-shadow:0 2px 20px rgba(0,0,0,.9), 0 0 34px rgba(120,170,255,.5);
+  }
+  #time { font-size:22vw; font-weight:200; letter-spacing:2px; line-height:1; }
+  #date { font-size:5vw; font-weight:300; margin-top:1.5vh; opacity:.94; }
+  #foot { position:absolute; bottom:3vh; font-size:3.2vw; opacity:.7; }
+  #badge { position:absolute; top:3vh; right:3vw; font-size:2.6vw; opacity:.6; letter-spacing:1px; }
+</style>
+</head>
+<body>
+  <div id="bg"></div>
+  <div id="wrap">
+    <div id="badge">森林车站 · 常驻</div>
+    <div id="time">--:--</div>
+    <div id="date"></div>
+    <div id="foot">智能家居中枢 · Kiosk</div>
+  </div>
+<script>
+(function(){
+  var badge = document.getElementById("badge");
+  var bg = document.getElementById("bg");
+
+  // 全时段同一张图、无遮罩；多路径候选，全部失败则保留上面的渐变兜底
+  var candidates = ["bg-forest.jpg", "file:///sdcard/Download/bg-forest.jpg"];
+  (function tryNext(i){
+    if (i >= candidates.length) { badge.textContent = "森林车站 · 渐变兜底"; return; }
+    var im = new Image();
+    im.onload  = function(){ bg.style.backgroundImage = 'url("' + candidates[i] + '")'; };
+    im.onerror = function(){ tryNext(i + 1); };
+    im.src = candidates[i];
+  })(0);
+
+  function pad(n){ return (n < 10 ? "0" : "") + n; }
+  function tick(){
+    var d = new Date();
+    document.getElementById("time").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+    var w = ["星期日","星期一","星期二","星期三","星期四","星期五","星期六"][d.getDay()];
+    document.getElementById("date").textContent =
+      d.getFullYear() + "年" + (d.getMonth()+1) + "月" + d.getDate() + "日 " + w;
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

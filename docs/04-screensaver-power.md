@@ -10,6 +10,30 @@ adb push assets/clock.html /sdcard/Download/clock.html
 
 页面每秒 `tick()` 一次更新时间与中文星期，字号用 `vw` 自适应，底部有一行说明文字。
 
+## 背景图版时钟页（当前实机定稿）
+
+`assets/clock-forest.html` 是进一步改造的版本：**全时段一张暗系背景图、原图直出、不加任何遮罩或模糊**，白色时钟常驻。背景本身偏暗，所以文字全天固定白色，不能再按 07:00/19:00 切成深色字；代码里没有任何时段或主题分支，白天夜里长得一模一样。
+
+> 本仓库的 `.gitignore` 忽略所有图片文件，**背景图不包含在公开仓库里**。请自备一张 4:3 的暗系图片，命名为 `bg-forest.jpg` 放到同目录；图片缺失时页面会自动回退内置暗色渐变，右上角标签变成「森林车站 · 渐变兜底」，不会黑屏。请勿把网络下载的壁纸提交到公开仓库。
+
+部署时沿用 `clock.html` 这个文件名，`screensaverWallpaperURL` 与 `screensaverPlaylist` 都无需改动：
+
+```bash
+MSYS_NO_PATHCONV=1 adb push assets/clock-forest.html /sdcard/Download/clock.html
+MSYS_NO_PATHCONV=1 adb push bg-forest.jpg /sdcard/Download/bg-forest.jpg
+MSYS_NO_PATHCONV=1 adb shell "am force-stop de.ozerov.fully"
+MSYS_NO_PATHCONV=1 adb shell "am start -n de.ozerov.fully/.FullyActivity"
+```
+
+要点：
+
+- 页面用 `Image` 依次尝试相对路径 `bg-forest.jpg` 和绝对路径 `file:///sdcard/Download/bg-forest.jpg`，两者都失败才保留渐变兜底。Android 7 + WebView 109 下 `file://` 同目录图片可正常加载，已实机验证。
+- 背景图建议裁到 1536×1152（4:3）、压到 400 KB 以内；老设备直接解码 4K 原图会吃掉几十 MB 内存。
+- **右上角标签就是排查信号**：显示「森林车站 · 常驻」= 图片加载成功；显示「…渐变兜底」= 图片路径或权限不对。
+- 选图经验：主体不居中的风景图最合适；「主体占满中央的特写」会跟中央 22vw 大时钟抢位置，无遮罩下字容易压在脸上。
+- `screensaverBrightness` 为 60/255，暗系壁纸在实机上会偏暗，觉得不够亮可调到 80–90（注意下面的坑 2）。
+- `adb shell screencap` 抓的是 framebuffer，**不受背光亮度影响**，截图会比肉眼看到的亮，验收时以实机为准。
+
 ## 关键设置项
 
 以下都能在 Kiosk 浏览器的设置界面 / 远程管理页找到对应项（名称以 Fully Kiosk 为例）：
@@ -29,7 +53,7 @@ adb push assets/clock.html /sdcard/Download/clock.html
 
 完整的脱敏清单见 [`tools/prefs-template.md`](../tools/prefs-template.md)。
 
-## 两个真实的坑
+## 四个真实的坑
 
 ### 坑 1：屏保永远不触发，亮度也不变
 
@@ -88,14 +112,34 @@ adb logcat -d | grep PAGE_BOOT             # 优化前有 1 条 HA URL，优化�
 
 若确实需要「唤醒即强制刷新」，把 `reloadOnScreensaverStop` 改回 `true` 即可。
 
+### 坑 4：重启应用后屏保一直不触发
+
+现象：`am force-stop` + `am start` 冷启动后，静置远超 30 秒仍是 HA 首页，
+系统亮度也没变成 60，日志里没有任何屏保相关记录。
+
+原因：idle 计时器由用户交互启动/复位；冷启动后完全没有触摸事件时，计时器不会自己跑起来。
+这不是配置错误，配置里 `timeToScreensaverV2` 仍是 30。
+
+处理：启动后模拟一次轻触再静置，点在页面空白处避免误触卡片：
+
+```bash
+MSYS_NO_PATHCONV=1 adb shell "input tap 400 40"
+MSYS_NO_PATHCONV=1 adb shell "sleep 38; settings get system screen_brightness"   # 60 = 已触发
+```
+
+实机闭环：先 `settings put system screen_brightness 167` → 轻触 → 静置 38 秒读到 60
+→ 触摸唤醒读回 167。唤醒后的 HA 首页与初始首页几乎逐字节一致（无重载白屏）。
+
 ## 回归验证
 
 ```bash
 adb shell settings put system screen_brightness 167
+adb shell "input tap 400 40"                                # 冷启动后必须有这一次交互
 # 静置超过设定时间
-adb shell "sleep 36; settings get system screen_brightness"   # 期望 60
-adb shell screencap -p /sdcard/Download/saver.png             # 应为时钟屏保
+adb shell "sleep 38; settings get system screen_brightness"  # 期望 60
+adb shell screencap -p /sdcard/Download/saver.png            # 应为时钟屏保
+# 背景图版：右上角标签应为「森林车站 · 常驻」，出现「渐变兜底」说明图片没加载上
 adb shell input tap 1000 700
-adb shell "sleep 6; settings get system screen_brightness"    # 期望 167
+adb shell "sleep 6; settings get system screen_brightness"   # 期望 167
 adb shell dumpsys activity activities | grep mResumedActivity # 应仍在 Kiosk 应用
 ```

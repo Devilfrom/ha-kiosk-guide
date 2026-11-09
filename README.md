@@ -33,6 +33,7 @@
 - [04 时钟屏保与省电](docs/04-screensaver-power.md)
 - [05 已知限制与回滚](docs/05-limits-and-rollback.md)
 - `assets/clock.html` — 自建黑底中文时钟屏保页
+- `assets/clock-forest.html` — 背景图版时钟屏保页（背景图需自备，见 [04](docs/04-screensaver-power.md)）
 - `tools/perf_sample.py` — 通过 adb 采样 CPU 与掉帧
 - `tools/prefs-template.md` — 脱敏的配置清单
 
